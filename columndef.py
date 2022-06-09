@@ -9,11 +9,13 @@ class Columndef:
     IsUnique = False        # Does the column have a unique index on it
     IsCompositeKey = False  # True if this column is part of a composite primary key
     Parent = ''
+    Rows = 0
 
-    def __init__(self, name: str, mandatory: bool, datatype: int, size: int, parent):
+    def __init__(self, name: str, mandatory: bool, datatype: int, size: int, parent, rows: int):
         dataTypeInfo = ''
         self.Name = name
         self.IsMandatory = mandatory
+        self.Rows = rows
 
         # Dictonary of {numeric datatype, [text name, has length]}
         switcher = {

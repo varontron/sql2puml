@@ -8,17 +8,33 @@ class Tabledef:
     Columns = {}
     Relationships = {}
     CompositePK = False
-    RowCount = None
+    RowCount = None    
     
     def __init__(self, name:str):
         self.Name = name
         self.Columns = {}
         self.Relationships = {}      # Relationdef[]
         self.CompositePK = False    
-        self.RowCount = None
+        self.RowCount = None        
 
-    
-    def __GetColumns(self, connection, tablename:str) -> None:
+    def __GetColumnRowCount(self, connection, tablename:str, columnname:str) -> None:
+        query = f"select count({columnname}) from {tablename}"
+        rowcount = 0
+        try:
+            cursor = connection.cursor()
+            cursor.execute(query)
+            row = cursor.fetchone()
+            while row:
+                rowcount = row[0]
+                row = cursor.fetchone()            
+        except Exception as e:
+            rowcount = 0
+        finally:
+            cursor.close()
+            return(rowcount)
+
+    def __GetColumns(self, connection, tablename:str, zerocols:str) -> None:
+        rows = 0
         try:
             # get the columns for a table
             self.Columns = {}
@@ -30,12 +46,14 @@ class Tabledef:
                     mandatory = False
                 
                 pk = False
-                self.Columns[row.column_name] = Columndef(row.column_name, mandatory, row.data_type, row.column_size, tablename)
-            cursor.close()            
+                if zerocols is not None:
+                    rows = self.__GetColumnRowCount(connection, tablename, row.column_name)
+                self.Columns[row.column_name] = Columndef(row.column_name, mandatory, row.data_type, row.column_size, tablename, rows)
         except Exception as e:
             self.Columns = None
         finally:
-            return
+            cursor.close()        
+            return    
 
     def __GetRowCount(self, connection, tablename:str) -> None:
         queries = { "Microsoft SQL Server": f"""SELECT p.rows AS RowCounts FROM sys.tables t INNER JOIN sys.partitions p ON t.object_id = p.OBJECT_ID WHERE t.NAME = '{tablename}' AND t.is_ms_shipped = 0 GROUP BY t.Name, p.Rows""",
@@ -49,15 +67,15 @@ class Tabledef:
             row = cursor.fetchone()
             while row:
                 self.RowCount = row[0]
-                row = cursor.fetchone()
-            cursor.close()
+                row = cursor.fetchone()            
         except Exception as e:
             self.RowCount = None
         finally:
+            cursor.close()
             return
     
     @classmethod
-    def Get(cls, connection, dbschema:str):
+    def Get(cls, connection, dbschema:str, zerorows:str, zerocols:str):
         try:
             # Get the tables for this connection
             cursor = connection.cursor()
@@ -74,8 +92,9 @@ class Tabledef:
 
             # For each table get the columns
             for key, value in tables.items():
-                value.__GetColumns(connection, key)          
-                value.__GetRowCount(connection, key)
+                value.__GetColumns(connection, key, zerocols)
+                if zerorows is not None:          
+                    value.__GetRowCount(connection, key)
     
             # Mark the columns comprising the primary key
             for key, value in tables.items():

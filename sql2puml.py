@@ -79,36 +79,46 @@ def EmitTableHeader(tablename, rowcount):
     print('entity "' + tablename + '" as ' + PumlName(tablename) + stereotype + ' {')
 
 
-def EmitTableDef(connection, table:Tabledef):
+def EmitTableDef(connection, table:Tabledef, zerocols:str):
     line = ''
     seperated = False
 
     for columnName, column in table.Columns.items():
-        if column.IsKey == False:               # Put out primary key seperator
-            if seperated == False:              # before the first non primary key column
-                print('\t--')
-                seperated = True
+        line = ""
+        if zerocols is not None and zerocols == "show" and column.Rows == 0:
+            line += "<color:#CCC>"
 
-        if column.IsMandatory:
-            line = '\t* '
+        if zerocols is None or column.Rows > 0:
+            line += "\t"
+
+        if zerocols is None or zerocols == "show":
+            if column.IsKey == False:               # Put out primary key seperator
+                if seperated == False:              # before the first non primary key column
+                    print("\t--")
+                    seperated = True
+
+            if column.IsMandatory:
+                line += '* '
+            
+            line = line + column.Name
+            if column.IsUnique:
+                line += '*'
+
+            line = line + ':' + column.Datatype            
+
+        if zerocols is not None and zerocols == "show" and column.Rows == 0:
+            print(f"{line}</color>")
         else:
-            line = '\t'
-        
-        line = line + column.Name
-        if column.IsUnique:
-            line = line + '*'
-
-        line = line + ':' + column.Datatype
-        print(line)
+            print(line)
 
 
 def EmitTableFooter():
     print('}\n')
 
 
-def EmitTable(connection, table:Tabledef):
+def EmitTable(connection, table:Tabledef, zerorows:str, zerocols:str):
     EmitTableHeader(table.Name, table.RowCount)
-    EmitTableDef(connection, table)
+    EmitTableDef(connection, table, zerocols)
     EmitTableFooter()
 
 def EmitRelations(connection, table:Tabledef):
@@ -134,6 +144,7 @@ def PrintUsage():
     printStderr('\t[-u, --user <username>]\tUsername to connect as')
     printStderr('\t[-P, --password <password>]\tPassword to connect with')
     printStderr('\t[-z, --zerorows <mode>]\tSupply one of show, hide, remove. Default is None, i.e., empty tables appear normally')
+    printStderr('\t[-Z, --zerocols <mode>]\tSupply one of show, remove. Default is None, i.e., columns appear normally')
     printStderr('\nExample: python sql2puml.py -server localhost -port 1433 -dbname pubs -schema dbo')
 
 
@@ -152,7 +163,7 @@ def main(argv) -> None:
     zerorows = None
 
     try:
-        opts, args = getopt.getopt(argv, 'S:d:s:h:p:o:u:P:D:z:', ['server=','database=','schema=','host=','port=','out=','user=','password=','driver=','zerorows='])
+        opts, args = getopt.getopt(argv, 'S:d:s:h:p:o:u:P:D:z:Z:', ['server=','database=','schema=','host=','port=','out=','user=','password=','driver=','zerorows=','zerocols='])
         for opt, arg in opts:
             if opt in ('-S', '--server'):
                 server = arg.lower()
@@ -174,6 +185,8 @@ def main(argv) -> None:
                 driver = arg
             elif opt in ('-z', '--zerorows'):
                 zerorows = arg
+            elif opt in ('-Z', '--zerocols'):
+                zerocols = arg
 
         if filename != '':            
             original_stdout = sys.stdout
@@ -190,10 +203,10 @@ def main(argv) -> None:
             schema = 'dbo'
 
         conn = Connect(driver, server, host, port, dbname, username, password)
-        tables = Tabledef.Get(conn, schema)
+        tables = Tabledef.Get(conn, schema, zerorows, zerocols)
         EmitPumlHeader(dbname, zerorows)
         for name, table in tables.items():
-            EmitTable(conn, table)
+            EmitTable(conn, table, zerorows, zerocols)
 
         for name, table in tables.items():
             EmitRelations(conn, table)
